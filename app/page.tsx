@@ -112,7 +112,7 @@ export default function HomePage() {
     setError(null);
 
     try {
-      const userId = await ensureAuth();
+      await ensureAuth();
       const roomCode = rejoinRoomCode.trim().toUpperCase();
       const code = rejoinCode.trim().toUpperCase();
 
@@ -122,7 +122,6 @@ export default function HomePage() {
       const { data, error: rpcError } = await supabase.rpc("claim_member_with_rejoin_code", {
         p_room_code: roomCode,
         p_rejoin_code: code,
-        p_new_user_id: userId,
       });
 
       if (rpcError) throw new Error(rpcError.message);

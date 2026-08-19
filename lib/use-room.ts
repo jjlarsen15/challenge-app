@@ -11,7 +11,7 @@ import type {
   DbRoom,
   RoomTimer,
 } from "./types";
-import { deriveTimerState, generateRejoinCode } from "./utils";
+import { deriveTimerState } from "./utils";
 
 type UseRoomResult = {
   room: DbRoom | null;
@@ -107,7 +107,7 @@ export function useRoom(code: string): UseRoomResult {
       const roomId = roomData.id;
 
       const [membersRes, challengesRes] = await Promise.all([
-        supabase.from("members").select("*").eq("room_id", roomId),
+        supabase.from("members").select("id, room_id, user_id, display_name, joined_at").eq("room_id", roomId),
         supabase.from("challenges").select("*").eq("room_id", roomId),
       ]);
 
@@ -147,9 +147,25 @@ export function useRoom(code: string): UseRoomResult {
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "members", filter: `room_id=eq.${roomId}` }, (payload) => {
         if (payload.eventType === "INSERT") {
-          setMembers((prev) => [...prev, payload.new as DbMember]);
+          const row = payload.new as Record<string, unknown>;
+          const member: DbMember = {
+            id: row.id as string,
+            room_id: row.room_id as string,
+            user_id: row.user_id as string,
+            display_name: row.display_name as string,
+            joined_at: (row.joined_at ?? row.created_at ?? "") as string,
+          };
+          setMembers((prev) => [...prev, member]);
+        } else if (payload.eventType === "UPDATE") {
+          const row = payload.new as Record<string, unknown>;
+          setMembers((prev) => prev.map((m) =>
+            m.id === row.id
+              ? { ...m, user_id: row.user_id as string, display_name: row.display_name as string }
+              : m,
+          ));
         } else if (payload.eventType === "DELETE") {
-          setMembers((prev) => prev.filter((m) => m.id !== (payload.old as DbMember).id));
+          const old = payload.old as Record<string, unknown>;
+          setMembers((prev) => prev.filter((m) => m.id !== old.id));
         }
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "challenges", filter: `room_id=eq.${roomId}` }, (payload) => {
@@ -185,14 +201,13 @@ export function useRoom(code: string): UseRoomResult {
 
   const generateMemberRejoinCode = useCallback(
     async (memberId: string): Promise<string> => {
-      const code = generateRejoinCode();
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const { error: err } = await supabase
-        .from("members")
-        .update({ rejoin_code: code, rejoin_code_expires_at: expiresAt })
-        .eq("id", memberId);
+      const { data, error: err } = await supabase.rpc("generate_member_rejoin_code", {
+        p_member_id: memberId,
+      });
       if (err) throw new Error(err.message);
-      return code;
+      const result = data as { error?: string; rejoin_code?: string };
+      if (result.error) throw new Error(result.error);
+      return result.rejoin_code!;
     },
     [],
   );
