@@ -105,10 +105,9 @@ export function useRoom(code: string): UseRoomResult {
 
       const roomId = roomData.id;
 
-      const [membersRes, challengesRes, contributionsRes] = await Promise.all([
+      const [membersRes, challengesRes] = await Promise.all([
         supabase.from("members").select("*").eq("room_id", roomId),
         supabase.from("challenges").select("*").eq("room_id", roomId),
-        supabase.from("contributions").select("*").eq("challenge_id", roomId),
       ]);
 
       if (!cancelled) {

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import type { Challenge } from "@/lib/types";
+import type { ChallengeWithProgress } from "@/lib/types";
+
+type Challenge = ChallengeWithProgress;
 
 type ChallengeFormFieldsProps = {
   mode: "add" | "edit";

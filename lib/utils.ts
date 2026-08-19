@@ -40,6 +40,7 @@ export function deriveTimerState(room: DbRoom): RoomTimer | null {
       durationSeconds: timer_duration_seconds,
       secondsRemaining: Math.max(0, timer_paused_remaining_seconds),
       status,
+      startedAt: null,
     };
   }
 
@@ -53,6 +54,7 @@ export function deriveTimerState(room: DbRoom): RoomTimer | null {
         durationSeconds: timer_duration_seconds,
         secondsRemaining: 0,
         status: "finished",
+        startedAt: timer_started_at,
       };
     }
 
@@ -60,6 +62,7 @@ export function deriveTimerState(room: DbRoom): RoomTimer | null {
       durationSeconds: timer_duration_seconds,
       secondsRemaining: remaining,
       status: "running",
+      startedAt: timer_started_at,
     };
   }
 
@@ -67,5 +70,6 @@ export function deriveTimerState(room: DbRoom): RoomTimer | null {
     durationSeconds: timer_duration_seconds,
     secondsRemaining: timer_duration_seconds,
     status: "ready",
+    startedAt: null,
   };
 }

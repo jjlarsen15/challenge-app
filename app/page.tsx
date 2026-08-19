@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { initRoom } from "@/lib/room-storage";
-import { saveRoomSession } from "@/lib/room-session";
+import { ensureAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 import { generateRoomCode } from "@/lib/utils";
 
 export default function HomePage() {
@@ -13,31 +13,94 @@ export default function HomePage() {
   const [createUserName, setCreateUserName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [joinUserName, setJoinUserName] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  function handleCreateRoom(event: React.FormEvent) {
+  async function handleCreateRoom(event: React.FormEvent) {
     event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError(null);
 
-    const roomName = createRoomName.trim() || "Challenge Room";
-    const userName = createUserName.trim() || "Guest";
-    const code = generateRoomCode();
+    try {
+      const userId = await ensureAuth();
+      const roomName = createRoomName.trim() || "Challenge Room";
+      const userName = createUserName.trim() || "Guest";
 
-    saveRoomSession(code, { roomName, userName });
-    initRoom(code, { roomName, userName }, true);
-    router.push(`/room/${code}`);
+      let code = generateRoomCode();
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const { data: existing } = await supabase
+          .from("rooms")
+          .select("id")
+          .eq("code", code)
+          .maybeSingle();
+        if (!existing) break;
+        code = generateRoomCode();
+      }
+
+      const { data: roomData, error: roomError } = await supabase
+        .from("rooms")
+        .insert({ code, name: roomName, admin_user_id: userId })
+        .select("id")
+        .single();
+
+      if (roomError || !roomData) throw new Error(roomError?.message ?? "Failed to create room");
+
+      const { error: memberError } = await supabase
+        .from("members")
+        .insert({ room_id: roomData.id, user_id: userId, display_name: userName });
+
+      if (memberError) throw new Error(memberError.message);
+
+      router.push(`/room/${code}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to create room");
+    } finally {
+      setBusy(false);
+    }
   }
 
-  function handleJoinRoom(event: React.FormEvent) {
+  async function handleJoinRoom(event: React.FormEvent) {
     event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError(null);
 
-    const code = joinCode.trim().toUpperCase();
-    if (code.length !== 6) return;
+    try {
+      const userId = await ensureAuth();
+      const code = joinCode.trim().toUpperCase();
+      if (code.length !== 6) throw new Error("Room code must be 6 characters");
+      const userName = joinUserName.trim() || "Guest";
 
-    const userName = joinUserName.trim() || "Guest";
-    const roomName = "Challenge Room";
+      const { data: roomData, error: roomError } = await supabase
+        .from("rooms")
+        .select("id")
+        .eq("code", code)
+        .maybeSingle();
 
-    saveRoomSession(code, { roomName, userName });
-    initRoom(code, { roomName, userName }, false);
-    router.push(`/room/${code}`);
+      if (roomError) throw new Error(roomError.message);
+      if (!roomData) throw new Error("Room not found. Check the code and try again.");
+
+      const { data: existingMember } = await supabase
+        .from("members")
+        .select("id")
+        .eq("room_id", roomData.id)
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (!existingMember) {
+        const { error: memberError } = await supabase
+          .from("members")
+          .insert({ room_id: roomData.id, user_id: userId, display_name: userName });
+        if (memberError) throw new Error(memberError.message);
+      }
+
+      router.push(`/room/${code}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to join room");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -54,6 +117,12 @@ export default function HomePage() {
             Track goals together. Create a room or join with a code.
           </p>
         </header>
+
+        {error && (
+          <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            {error}
+          </div>
+        )}
 
         <div className="space-y-6">
           <section className="rounded-2xl bg-white p-5 shadow-sm">
@@ -85,9 +154,10 @@ export default function HomePage() {
               </label>
               <button
                 type="submit"
-                className="w-full rounded-xl bg-orange-500 px-4 py-4 text-lg font-bold text-white transition hover:bg-orange-600 active:scale-[0.99]"
+                disabled={busy}
+                className="w-full rounded-xl bg-orange-500 px-4 py-4 text-lg font-bold text-white transition hover:bg-orange-600 active:scale-[0.99] disabled:opacity-50"
               >
-                Create Room
+                {busy ? "Creating..." : "Create Room"}
               </button>
             </form>
           </section>
@@ -124,10 +194,10 @@ export default function HomePage() {
               </label>
               <button
                 type="submit"
-                disabled={joinCode.trim().length !== 6}
+                disabled={busy || joinCode.trim().length !== 6}
                 className="w-full rounded-xl bg-slate-900 px-4 py-4 text-lg font-bold text-white transition hover:bg-slate-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
               >
-                Join Room
+                {busy ? "Joining..." : "Join Room"}
               </button>
             </form>
           </section>

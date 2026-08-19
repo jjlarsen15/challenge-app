@@ -1,183 +1,101 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { ChallengeCard } from "@/components/ChallengeCard";
 import { ChallengeFormModal } from "@/components/ChallengeFormModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { MemberList } from "@/components/MemberList";
 import { RoomTimerSection } from "@/components/RoomTimer";
-import { createEmptyRoom, loadRoomData, saveRoomData } from "@/lib/room-storage";
-import type { Challenge, RoomData } from "@/lib/types";
-import { applyProgressChange } from "@/lib/utils";
+import { useRoom } from "@/lib/use-room";
+import type { ChallengeWithProgress } from "@/lib/types";
 
 type RoomViewProps = {
   code: string;
 };
 
-function getInitialRoomData(code: string): RoomData {
-  const existing = loadRoomData(code);
-  if (existing) return existing;
-
-  const empty = createEmptyRoom({ roomName: "Challenge Room", userName: "Guest" });
-  saveRoomData(code, empty);
-  return empty;
-}
-
 export function RoomView({ code }: RoomViewProps) {
-  const [roomData, setRoomData] = useState<RoomData>(() => getInitialRoomData(code));
+  const {
+    room,
+    members,
+    challenges,
+    timer,
+    currentMemberId,
+    isAdmin,
+    loading,
+    error,
+    addChallenge,
+    editChallenge,
+    deleteChallenge,
+    addContribution,
+    setTimerDuration,
+    startTimer,
+    pauseTimer,
+    resumeTimer,
+    resetTimer,
+  } = useRoom(code);
+
   const [formMode, setFormMode] = useState<"add" | "edit">("add");
   const [showFormModal, setShowFormModal] = useState(false);
-  const [editingChallenge, setEditingChallenge] = useState<Challenge | undefined>();
+  const [editingChallenge, setEditingChallenge] = useState<ChallengeWithProgress | undefined>();
   const [deleteChallengeId, setDeleteChallengeId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
-  const persist = useCallback(
-    (updater: (current: RoomData) => RoomData) => {
-      setRoomData((current) => {
-        const next = updater(current);
-        saveRoomData(code, next);
-        return next;
-      });
-    },
-    [code],
-  );
-
-  function handleAddProgress(challengeId: string, amount: number) {
-    persist((current) => ({
-      ...current,
-      challenges: current.challenges.map((challenge) =>
-        challenge.id === challengeId
-          ? applyProgressChange(challenge, amount)
-          : challenge,
-      ),
-    }));
-  }
-
-  function handleSaveChallenge(data: { name: string; goal: number; unit: string }) {
-    if (formMode === "add") {
-      const newChallenge: Challenge = {
-        id: `challenge-${Date.now()}`,
-        name: data.name,
-        goal: data.goal,
-        unit: data.unit,
-        progress: 0,
-      };
-      persist((current) => ({
-        ...current,
-        challenges: [...current.challenges, newChallenge],
-      }));
-      return;
+  async function handleAddProgress(challengeId: string, amount: number) {
+    try {
+      setActionError(null);
+      await addContribution(challengeId, amount);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to add progress");
     }
-
-    if (!editingChallenge) return;
-
-    persist((current) => ({
-      ...current,
-      challenges: current.challenges.map((challenge) =>
-        challenge.id === editingChallenge.id
-          ? {
-              ...challenge,
-              name: data.name,
-              goal: data.goal,
-              unit: data.unit,
-              progress: Math.min(challenge.progress, data.goal),
-            }
-          : challenge,
-      ),
-    }));
   }
 
-  function handleDeleteChallenge() {
-    if (!deleteChallengeId) return;
+  async function handleSaveChallenge(data: { name: string; goal: number; unit: string }) {
+    try {
+      setActionError(null);
+      if (formMode === "add") {
+        await addChallenge(data);
+      } else if (editingChallenge) {
+        await editChallenge(editingChallenge.id, data);
+      }
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save challenge");
+    }
+  }
 
-    persist((current) => ({
-      ...current,
-      challenges: current.challenges.filter(
-        (challenge) => challenge.id !== deleteChallengeId,
-      ),
-    }));
+  async function handleDeleteChallenge() {
+    if (!deleteChallengeId) return;
+    try {
+      setActionError(null);
+      await deleteChallenge(deleteChallengeId);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to delete challenge");
+    }
     setDeleteChallengeId(null);
   }
 
-  function handleSetDuration(durationSeconds: number) {
-    persist((current) => ({
-      ...current,
-      timer: {
-        durationSeconds,
-        secondsRemaining: durationSeconds,
-        status: "ready",
-      },
-    }));
+  if (loading) {
+    return (
+      <div className="flex min-h-full items-center justify-center bg-gradient-to-b from-orange-50 to-amber-50">
+        <p className="text-lg font-medium text-slate-500">Loading room...</p>
+      </div>
+    );
   }
 
-  function handleStartTimer() {
-    persist((current) => {
-      if (!current.timer) return current;
-      return {
-        ...current,
-        timer: { ...current.timer, status: "running" },
-      };
-    });
+  if (error || !room) {
+    return (
+      <div className="flex min-h-full flex-col items-center justify-center gap-4 bg-gradient-to-b from-orange-50 to-amber-50 px-4">
+        <p className="text-xl font-bold text-slate-900">Room not found</p>
+        <p className="text-base text-slate-600">{error ?? "This room does not exist."}</p>
+        <Link
+          href="/"
+          className="rounded-xl bg-orange-500 px-5 py-3 text-base font-bold text-white hover:bg-orange-600"
+        >
+          ← Back home
+        </Link>
+      </div>
+    );
   }
-
-  function handlePauseTimer() {
-    persist((current) => {
-      if (!current.timer) return current;
-      return {
-        ...current,
-        timer: { ...current.timer, status: "paused" },
-      };
-    });
-  }
-
-  function handleResumeTimer() {
-    persist((current) => {
-      if (!current.timer) return current;
-      return {
-        ...current,
-        timer: { ...current.timer, status: "running" },
-      };
-    });
-  }
-
-  function handleResetTimer() {
-    persist((current) => {
-      if (!current.timer) return current;
-      return {
-        ...current,
-        timer: {
-          ...current.timer,
-          secondsRemaining: current.timer.durationSeconds,
-          status: "ready",
-        },
-      };
-    });
-  }
-
-  const handleTick = useCallback(() => {
-    persist((current) => {
-      if (!current.timer || current.timer.status !== "running") return current;
-
-      const nextRemaining = current.timer.secondsRemaining - 1;
-      if (nextRemaining <= 0) {
-        return {
-          ...current,
-          timer: {
-            ...current.timer,
-            secondsRemaining: 0,
-            status: "finished",
-          },
-        };
-      }
-
-      return {
-        ...current,
-        timer: {
-          ...current.timer,
-          secondsRemaining: nextRemaining,
-        },
-      };
-    });
-  }, [persist]);
 
   return (
     <div className="min-h-full bg-gradient-to-b from-orange-50 to-amber-50">
@@ -189,46 +107,64 @@ export function RoomView({ code }: RoomViewProps) {
           ← Back home
         </Link>
 
+        {actionError && (
+          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+            {actionError}
+          </div>
+        )}
+
         <header className="rounded-2xl bg-white p-5 shadow-sm">
           <p className="text-sm font-semibold uppercase tracking-wide text-orange-600">
             Challenge
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">{roomData.roomName}</h1>
+          <h1 className="mt-1 text-2xl font-bold text-slate-900">{room.name}</h1>
 
           <RoomTimerSection
-            timer={roomData.timer}
-            onSetDuration={handleSetDuration}
-            onStart={handleStartTimer}
-            onPause={handlePauseTimer}
-            onResume={handleResumeTimer}
-            onReset={handleResetTimer}
-            onTick={handleTick}
+            timer={timer}
+            isAdmin={isAdmin}
+            onSetDuration={setTimerDuration}
+            onStart={startTimer}
+            onPause={pauseTimer}
+            onResume={resumeTimer}
+            onReset={resetTimer}
           />
 
-          <div className="mt-5 rounded-xl bg-orange-50 px-4 py-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Join code
-            </p>
-            <p className="font-mono text-lg font-bold text-slate-900">{code}</p>
+          <div className="mt-5 flex items-center justify-between rounded-xl bg-orange-50 px-4 py-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Join code
+              </p>
+              <p className="font-mono text-lg font-bold text-slate-900">{code}</p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Members
+              </p>
+              <p className="text-lg font-bold text-slate-900">{members.length}</p>
+            </div>
           </div>
+
+          <MemberList members={members} adminUserId={room.admin_user_id} />
         </header>
 
         <section className="mt-6 space-y-4">
-          {roomData.challenges.length === 0 ? (
+          {challenges.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-orange-200 bg-white px-5 py-10 text-center">
               <p className="text-base font-medium text-slate-600">
-                No challenges yet. Add your first challenge.
+                No challenges yet.{isAdmin ? " Add your first challenge." : ""}
               </p>
             </div>
           ) : (
-            roomData.challenges.map((challenge) => (
+            challenges.map((challenge) => (
               <ChallengeCard
                 key={challenge.id}
                 challenge={challenge}
+                isAdmin={isAdmin}
+                hasMembership={!!currentMemberId}
                 onAddProgress={handleAddProgress}
-                onEdit={(challengeToEdit) => {
+                onEdit={(ch) => {
                   setFormMode("edit");
-                  setEditingChallenge(challengeToEdit);
+                  setEditingChallenge(ch);
                   setShowFormModal(true);
                 }}
                 onDelete={setDeleteChallengeId}
@@ -237,17 +173,19 @@ export function RoomView({ code }: RoomViewProps) {
           )}
         </section>
 
-        <button
-          type="button"
-          onClick={() => {
-            setFormMode("add");
-            setEditingChallenge(undefined);
-            setShowFormModal(true);
-          }}
-          className="mt-6 w-full rounded-2xl border-2 border-dashed border-orange-300 bg-white px-4 py-4 text-lg font-bold text-orange-700 transition hover:border-orange-400 hover:bg-orange-50 active:scale-[0.99]"
-        >
-          + Add Challenge
-        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => {
+              setFormMode("add");
+              setEditingChallenge(undefined);
+              setShowFormModal(true);
+            }}
+            className="mt-6 w-full rounded-2xl border-2 border-dashed border-orange-300 bg-white px-4 py-4 text-lg font-bold text-orange-700 transition hover:border-orange-400 hover:bg-orange-50 active:scale-[0.99]"
+          >
+            + Add Challenge
+          </button>
+        )}
       </div>
 
       <ChallengeFormModal

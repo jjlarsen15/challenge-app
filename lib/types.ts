@@ -40,6 +40,7 @@ export type RoomTimer = {
   durationSeconds: number;
   secondsRemaining: number;
   status: TimerStatus;
+  startedAt: string | null;
 };
 
 export type ChallengeWithProgress = {
