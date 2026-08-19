@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { initRoom } from "@/lib/room-storage";
 import { saveRoomSession } from "@/lib/room-session";
 import { generateRoomCode } from "@/lib/utils";
 
@@ -21,6 +22,7 @@ export default function HomePage() {
     const code = generateRoomCode();
 
     saveRoomSession(code, { roomName, userName });
+    initRoom(code, { roomName, userName }, true);
     router.push(`/room/${code}`);
   }
 
@@ -31,8 +33,10 @@ export default function HomePage() {
     if (code.length !== 6) return;
 
     const userName = joinUserName.trim() || "Guest";
+    const roomName = "Challenge Room";
 
-    saveRoomSession(code, { roomName: "Challenge Room", userName });
+    saveRoomSession(code, { roomName, userName });
+    initRoom(code, { roomName, userName }, false);
     router.push(`/room/${code}`);
   }
 

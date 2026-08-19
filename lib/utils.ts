@@ -15,22 +15,10 @@ export function formatPercent(progress: number, goal: number): number {
   return Math.min(100, Math.round((progress / goal) * 100));
 }
 
-export function addChallengeProgress(
-  challenge: Challenge,
-  amount: number,
-  userName: string,
-): Challenge {
-  const oldProgress = challenge.progress;
-  const newProgress = Math.max(0, oldProgress + amount);
-  const delta = newProgress - oldProgress;
-
+export function applyProgressChange(challenge: Challenge, amount: number): Challenge {
   return {
     ...challenge,
-    progress: newProgress,
-    contributions: {
-      ...challenge.contributions,
-      [userName]: Math.max(0, (challenge.contributions[userName] ?? 0) + delta),
-    },
+    progress: Math.max(0, challenge.progress + amount),
   };
 }
 
@@ -42,6 +30,10 @@ export function formatCountdown(totalSeconds: number): string {
   return [hours, minutes, seconds]
     .map((value) => String(value).padStart(2, "0"))
     .join(":");
+}
+
+export function durationToSeconds(hours: number, minutes: number): number {
+  return hours * 3600 + minutes * 60;
 }
 
 export const ROOM_SESSION_KEY = "challenge-room-session";
