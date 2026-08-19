@@ -13,6 +13,8 @@ export default function HomePage() {
   const [createUserName, setCreateUserName] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [joinUserName, setJoinUserName] = useState("");
+  const [rejoinRoomCode, setRejoinRoomCode] = useState("");
+  const [rejoinCode, setRejoinCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -98,6 +100,39 @@ export default function HomePage() {
       router.push(`/room/${code}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to join room");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRejoin(event: React.FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+
+    try {
+      const userId = await ensureAuth();
+      const roomCode = rejoinRoomCode.trim().toUpperCase();
+      const code = rejoinCode.trim().toUpperCase();
+
+      if (roomCode.length !== 6) throw new Error("Room code must be 6 characters");
+      if (!code) throw new Error("Rejoin code is required");
+
+      const { data, error: rpcError } = await supabase.rpc("claim_member_with_rejoin_code", {
+        p_room_code: roomCode,
+        p_rejoin_code: code,
+        p_new_user_id: userId,
+      });
+
+      if (rpcError) throw new Error(rpcError.message);
+
+      const result = data as { error?: string; success?: boolean; room_code?: string };
+      if (result.error) throw new Error(result.error);
+
+      router.push(`/room/${roomCode}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Recovery failed");
     } finally {
       setBusy(false);
     }
@@ -198,6 +233,51 @@ export default function HomePage() {
                 className="w-full rounded-xl bg-slate-900 px-4 py-4 text-lg font-bold text-white transition hover:bg-slate-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {busy ? "Joining..." : "Join Room"}
+              </button>
+            </form>
+          </section>
+          <section className="rounded-2xl bg-white p-5 shadow-sm">
+            <h2 className="text-xl font-bold text-slate-900">Rejoin Existing Member</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Lost your session? Use a rejoin code from your room admin.
+            </p>
+            <form onSubmit={handleRejoin} className="mt-4 space-y-3">
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">
+                  Room code
+                </span>
+                <input
+                  type="text"
+                  value={rejoinRoomCode}
+                  onChange={(event) =>
+                    setRejoinRoomCode(event.target.value.toUpperCase().slice(0, 6))
+                  }
+                  placeholder="ABC123"
+                  maxLength={6}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 font-mono text-base uppercase tracking-widest outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
+                />
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-sm font-medium text-slate-700">
+                  Rejoin code
+                </span>
+                <input
+                  type="text"
+                  value={rejoinCode}
+                  onChange={(event) =>
+                    setRejoinCode(event.target.value.toUpperCase().slice(0, 6))
+                  }
+                  placeholder="K7PM4Q"
+                  maxLength={6}
+                  className="w-full rounded-xl border border-slate-200 px-4 py-3 font-mono text-base uppercase tracking-widest outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={busy || rejoinRoomCode.trim().length !== 6 || !rejoinCode.trim()}
+                className="w-full rounded-xl bg-emerald-600 px-4 py-4 text-lg font-bold text-white transition hover:bg-emerald-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {busy ? "Recovering..." : "Rejoin Member"}
               </button>
             </form>
           </section>

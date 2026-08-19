@@ -27,6 +27,7 @@ export function RoomView({ code }: RoomViewProps) {
     addChallenge,
     editChallenge,
     deleteChallenge,
+    generateMemberRejoinCode,
     addContribution,
     setTimerDuration,
     startTimer,
@@ -144,7 +145,12 @@ export function RoomView({ code }: RoomViewProps) {
             </div>
           </div>
 
-          <MemberList members={members} adminUserId={room.admin_user_id} />
+          <MemberList
+            members={members}
+            adminUserId={room.admin_user_id}
+            isAdmin={isAdmin}
+            onGenerateRejoinCode={generateMemberRejoinCode}
+          />
         </header>
 
         <section className="mt-6 space-y-4">

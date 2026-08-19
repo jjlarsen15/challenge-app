@@ -14,6 +14,8 @@ export type DbMember = {
   room_id: string;
   user_id: string;
   display_name: string;
+  rejoin_code: string | null;
+  rejoin_code_expires_at: string | null;
   created_at: string;
 };
 

@@ -1,6 +1,15 @@
 import type { DbRoom, RoomTimer, TimerStatus } from "./types";
 
 const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+const REJOIN_CODE_CHARS = "ABCDEFGHJKMNPQRSTUVWXYZ2345679";
+
+export function generateRejoinCode(): string {
+  let code = "";
+  for (let i = 0; i < 6; i++) {
+    code += REJOIN_CODE_CHARS[Math.floor(Math.random() * REJOIN_CODE_CHARS.length)];
+  }
+  return code;
+}
 
 export function generateRoomCode(): string {
   let code = "";

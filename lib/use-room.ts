@@ -11,7 +11,7 @@ import type {
   DbRoom,
   RoomTimer,
 } from "./types";
-import { deriveTimerState } from "./utils";
+import { deriveTimerState, generateRejoinCode } from "./utils";
 
 type UseRoomResult = {
   room: DbRoom | null;
@@ -23,6 +23,7 @@ type UseRoomResult = {
   isAdmin: boolean;
   loading: boolean;
   error: string | null;
+  generateMemberRejoinCode: (memberId: string) => Promise<string>;
   addChallenge: (data: { name: string; goal: number; unit: string }) => Promise<void>;
   editChallenge: (id: string, data: { name: string; goal: number; unit: string }) => Promise<void>;
   deleteChallenge: (id: string) => Promise<void>;
@@ -182,6 +183,20 @@ export function useRoom(code: string): UseRoomResult {
   const challenges = buildChallenges(rawChallenges, contributions, members);
   const timer = room ? deriveTimerState(room) : null;
 
+  const generateMemberRejoinCode = useCallback(
+    async (memberId: string): Promise<string> => {
+      const code = generateRejoinCode();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const { error: err } = await supabase
+        .from("members")
+        .update({ rejoin_code: code, rejoin_code_expires_at: expiresAt })
+        .eq("id", memberId);
+      if (err) throw new Error(err.message);
+      return code;
+    },
+    [],
+  );
+
   const addChallenge = useCallback(
     async (data: { name: string; goal: number; unit: string }) => {
       if (!roomIdRef.current) return;
@@ -306,6 +321,7 @@ export function useRoom(code: string): UseRoomResult {
     isAdmin,
     loading,
     error,
+    generateMemberRejoinCode,
     addChallenge,
     editChallenge,
     deleteChallenge,
