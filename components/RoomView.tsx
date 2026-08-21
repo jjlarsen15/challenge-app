@@ -1,14 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { CategoryCard } from "@/components/CategoryCard";
+import { CategoryFormModal } from "@/components/CategoryFormModal";
 import { ChallengeCard } from "@/components/ChallengeCard";
 import { ChallengeFormModal } from "@/components/ChallengeFormModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { MemberList } from "@/components/MemberList";
 import { RoomTimerSection } from "@/components/RoomTimer";
 import { useRoom } from "@/lib/use-room";
-import type { ChallengeWithProgress } from "@/lib/types";
+import type { CategoryWithStats, ChallengeWithProgress } from "@/lib/types";
 
 type RoomViewProps = {
   code: string;
@@ -18,12 +20,16 @@ export function RoomView({ code }: RoomViewProps) {
   const {
     room,
     members,
+    categories,
     challenges,
     timer,
     currentMemberId,
     isAdmin,
     loading,
     error,
+    addCategory,
+    renameCategory,
+    deleteCategory,
     addChallenge,
     editChallenge,
     deleteChallenge,
@@ -36,43 +42,100 @@ export function RoomView({ code }: RoomViewProps) {
     resetTimer,
   } = useRoom(code);
 
+  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  const [showMembers, setShowMembers] = useState(false);
+
   const [formMode, setFormMode] = useState<"add" | "edit">("add");
   const [showFormModal, setShowFormModal] = useState(false);
   const [editingChallenge, setEditingChallenge] = useState<ChallengeWithProgress | undefined>();
+
+  const [categoryFormMode, setCategoryFormMode] = useState<"add" | "rename">("add");
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [renamingCategory, setRenamingCategory] = useState<CategoryWithStats | undefined>();
+
   const [deleteChallengeId, setDeleteChallengeId] = useState<string | null>(null);
+  const [deleteCategoryTarget, setDeleteCategoryTarget] = useState<CategoryWithStats | null>(
+    null,
+  );
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const selectedCategory = useMemo(
+    () => categories.find((c) => c.id === selectedCategoryId) ?? null,
+    [categories, selectedCategoryId],
+  );
+
+  const categoryChallenges = useMemo(
+    () =>
+      selectedCategoryId
+        ? challenges.filter((c) => c.categoryId === selectedCategoryId)
+        : [],
+    [challenges, selectedCategoryId],
+  );
+
   async function handleAddProgress(challengeId: string, amount: number) {
-    try {
-      setActionError(null);
-      await addContribution(challengeId, amount);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to add progress");
-    }
+    setActionError(null);
+    await addContribution(challengeId, amount);
   }
 
-  async function handleSaveChallenge(data: { name: string; goal: number; unit: string }) {
-    try {
-      setActionError(null);
-      if (formMode === "add") {
-        await addChallenge(data);
-      } else if (editingChallenge) {
-        await editChallenge(editingChallenge.id, data);
-      }
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to save challenge");
+  async function handleSaveChallenge(data: {
+    name: string;
+    goal: number;
+    unit: string;
+    categoryId: string;
+  }) {
+    setActionError(null);
+    if (formMode === "add") {
+      await addChallenge(data);
+    } else if (editingChallenge) {
+      await editChallenge(editingChallenge.id, data);
     }
   }
 
   async function handleDeleteChallenge() {
     if (!deleteChallengeId) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await deleteChallenge(deleteChallengeId);
+      setDeleteChallengeId(null);
+      setActionError(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete challenge");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
+
+  async function handleSaveCategory(name: string) {
     try {
       setActionError(null);
-      await deleteChallenge(deleteChallengeId);
+      if (categoryFormMode === "add") {
+        await addCategory(name);
+      } else if (renamingCategory) {
+        await renameCategory(renamingCategory.id, name);
+      }
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to delete challenge");
+      setActionError(err instanceof Error ? err.message : "Failed to save location");
     }
-    setDeleteChallengeId(null);
+  }
+
+  async function handleDeleteCategory() {
+    if (!deleteCategoryTarget) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    try {
+      await deleteCategory(deleteCategoryTarget.id);
+      if (selectedCategoryId === deleteCategoryTarget.id) {
+        setSelectedCategoryId(null);
+      }
+      setDeleteCategoryTarget(null);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete location");
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   if (loading) {
@@ -100,25 +163,25 @@ export function RoomView({ code }: RoomViewProps) {
 
   return (
     <div className="min-h-full bg-gradient-to-b from-orange-50 to-amber-50">
-      <div className="mx-auto w-full max-w-md px-4 py-6 pb-10">
+      <div className="mx-auto w-full max-w-md px-3 py-4 pb-8 sm:px-4 sm:py-6">
         <Link
           href="/"
-          className="mb-4 inline-flex text-sm font-medium text-orange-700 hover:text-orange-800"
+          className="mb-3 inline-flex text-sm font-medium text-orange-700 hover:text-orange-800"
         >
           ← Back home
         </Link>
 
         {actionError && (
-          <div className="mb-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+          <div className="mb-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
             {actionError}
           </div>
         )}
 
-        <header className="rounded-2xl bg-white p-5 shadow-sm">
-          <p className="text-sm font-semibold uppercase tracking-wide text-orange-600">
+        <header className="rounded-xl bg-white p-3 shadow-sm sm:p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-orange-600">
             Challenge
           </p>
-          <h1 className="mt-1 text-2xl font-bold text-slate-900">{room.name}</h1>
+          <h1 className="mt-0.5 text-xl font-bold text-slate-900 sm:text-2xl">{room.name}</h1>
 
           <RoomTimerSection
             timer={timer}
@@ -130,67 +193,140 @@ export function RoomView({ code }: RoomViewProps) {
             onReset={resetTimer}
           />
 
-          <div className="mt-5 flex items-center justify-between rounded-xl bg-orange-50 px-4 py-3">
+          <div className="mt-3 flex items-center justify-between rounded-xl bg-orange-50 px-3 py-2">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 Join code
               </p>
-              <p className="font-mono text-lg font-bold text-slate-900">{code}</p>
+              <p className="font-mono text-base font-bold text-slate-900">{code}</p>
             </div>
-            <div className="text-right">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <button
+              type="button"
+              onClick={() => setShowMembers((open) => !open)}
+              className="rounded-lg border border-orange-200 bg-white px-3 py-1.5 text-left"
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
                 Members
               </p>
-              <p className="text-lg font-bold text-slate-900">{members.length}</p>
-            </div>
+              <p className="text-base font-bold text-slate-900">
+                {members.length} {showMembers ? "▾" : "▸"}
+              </p>
+            </button>
           </div>
 
-          <MemberList
-            members={members}
-            adminUserId={room.admin_user_id}
-            isAdmin={isAdmin}
-            onGenerateRejoinCode={generateMemberRejoinCode}
-          />
+          {showMembers && (
+            <MemberList
+              members={members}
+              adminUserId={room.admin_user_id}
+              isAdmin={isAdmin}
+              onGenerateRejoinCode={generateMemberRejoinCode}
+            />
+          )}
         </header>
 
-        <section className="mt-6 space-y-4">
-          {challenges.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-orange-200 bg-white px-5 py-10 text-center">
-              <p className="text-base font-medium text-slate-600">
-                No challenges yet.{isAdmin ? " Add your first challenge." : ""}
-              </p>
+        {!selectedCategory ? (
+          <section className="mt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-base font-bold text-slate-900">Locations</h2>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCategoryFormMode("add");
+                    setRenamingCategory(undefined);
+                    setShowCategoryForm(true);
+                  }}
+                  className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-bold text-white hover:bg-orange-600"
+                >
+                  + Add
+                </button>
+              )}
             </div>
-          ) : (
-            challenges.map((challenge) => (
-              <ChallengeCard
-                key={challenge.id}
-                challenge={challenge}
-                isAdmin={isAdmin}
-                hasMembership={!!currentMemberId}
-                onAddProgress={handleAddProgress}
-                onEdit={(ch) => {
-                  setFormMode("edit");
-                  setEditingChallenge(ch);
-                  setShowFormModal(true);
-                }}
-                onDelete={setDeleteChallengeId}
-              />
-            ))
-          )}
-        </section>
 
-        {isAdmin && (
-          <button
-            type="button"
-            onClick={() => {
-              setFormMode("add");
-              setEditingChallenge(undefined);
-              setShowFormModal(true);
-            }}
-            className="mt-6 w-full rounded-2xl border-2 border-dashed border-orange-300 bg-white px-4 py-4 text-lg font-bold text-orange-700 transition hover:border-orange-400 hover:bg-orange-50 active:scale-[0.99]"
-          >
-            + Add Challenge
-          </button>
+            {categories.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-orange-200 bg-white px-4 py-8 text-center">
+                <p className="text-sm font-medium text-slate-600">
+                  No locations yet.
+                  {isAdmin ? " Add a location like Climbing Gym or Park." : ""}
+                </p>
+              </div>
+            ) : (
+              categories.map((category) => (
+                <CategoryCard
+                  key={category.id}
+                  category={category}
+                  isAdmin={isAdmin}
+                  onOpen={setSelectedCategoryId}
+                  onRename={(cat) => {
+                    setCategoryFormMode("rename");
+                    setRenamingCategory(cat);
+                    setShowCategoryForm(true);
+                  }}
+                  onDelete={setDeleteCategoryTarget}
+                />
+              ))
+            )}
+          </section>
+        ) : (
+          <section className="mt-4 space-y-3">
+            <button
+              type="button"
+              onClick={() => setSelectedCategoryId(null)}
+              className="inline-flex text-sm font-medium text-orange-700 hover:text-orange-800"
+            >
+              ← Back to Locations
+            </button>
+
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900">{selectedCategory.name}</h2>
+                <p className="text-sm text-slate-600">
+                  {selectedCategory.completedCount} / {selectedCategory.challengeCount} complete
+                </p>
+              </div>
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormMode("add");
+                    setEditingChallenge(undefined);
+                    setShowFormModal(true);
+                  }}
+                  className="rounded-lg bg-orange-500 px-3 py-1.5 text-sm font-bold text-white hover:bg-orange-600"
+                >
+                  + Challenge
+                </button>
+              )}
+            </div>
+
+            {categoryChallenges.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-orange-200 bg-white px-4 py-8 text-center">
+                <p className="text-sm font-medium text-slate-600">
+                  No challenges yet.
+                  {isAdmin ? " Add your first challenge here." : ""}
+                </p>
+              </div>
+            ) : (
+              categoryChallenges.map((challenge) => (
+                <ChallengeCard
+                  key={challenge.id}
+                  challenge={challenge}
+                  isAdmin={isAdmin}
+                  hasMembership={!!currentMemberId}
+                  onAddProgress={handleAddProgress}
+                  onEdit={(ch) => {
+                    setFormMode("edit");
+                    setEditingChallenge(ch);
+                    setShowFormModal(true);
+                  }}
+                  onDelete={(id) => {
+                    setDeleteError(null);
+                    setDeleteChallengeId(id);
+                  }}
+                />
+              ))
+            )}
+          </section>
         )}
       </div>
 
@@ -198,17 +334,54 @@ export function RoomView({ code }: RoomViewProps) {
         open={showFormModal}
         mode={formMode}
         challenge={editingChallenge}
+        categories={categories}
+        defaultCategoryId={selectedCategoryId ?? undefined}
         onClose={() => setShowFormModal(false)}
         onSave={handleSaveChallenge}
+      />
+
+      <CategoryFormModal
+        open={showCategoryForm}
+        mode={categoryFormMode}
+        initialName={renamingCategory?.name}
+        onClose={() => setShowCategoryForm(false)}
+        onSave={handleSaveCategory}
       />
 
       <ConfirmDialog
         open={deleteChallengeId !== null}
         title="Delete challenge?"
-        message="This will permanently remove the challenge and its progress from this room."
+        message="This will permanently remove the challenge and all of its contributions."
         confirmLabel="Delete"
+        busy={deleteBusy}
+        error={deleteError}
         onConfirm={handleDeleteChallenge}
-        onCancel={() => setDeleteChallengeId(null)}
+        onCancel={() => {
+          if (!deleteBusy) {
+            setDeleteChallengeId(null);
+            setDeleteError(null);
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={deleteCategoryTarget !== null}
+        title="Delete location?"
+        message={
+          deleteCategoryTarget
+            ? `Delete ${deleteCategoryTarget.name} and all ${deleteCategoryTarget.challengeCount} challenge${deleteCategoryTarget.challengeCount === 1 ? "" : "s"} inside it?`
+            : ""
+        }
+        confirmLabel="Delete"
+        busy={deleteBusy}
+        error={deleteError}
+        onConfirm={handleDeleteCategory}
+        onCancel={() => {
+          if (!deleteBusy) {
+            setDeleteCategoryTarget(null);
+            setDeleteError(null);
+          }
+        }}
       />
     </div>
   );

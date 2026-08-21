@@ -62,19 +62,19 @@ export function RoomTimerSection({
   const initialMinutes = timer ? Math.floor((timer.durationSeconds % 3600) / 60) : 0;
 
   return (
-    <div className="mt-5 text-center">
-      <p className="text-xs font-semibold uppercase tracking-widest text-slate-500">
+    <div className="mt-3 text-center">
+      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
         Timer
       </p>
 
       {!timer && (
-        <div className="mt-2 space-y-3">
-          <p className="text-lg font-medium text-slate-500">Timer not set</p>
+        <div className="mt-1.5 space-y-2">
+          <p className="text-base font-medium text-slate-500">Timer not set</p>
           {isAdmin && (
             <button
               type="button"
               onClick={() => setShowSetModal(true)}
-              className="rounded-xl bg-orange-500 px-5 py-3 text-base font-bold text-white hover:bg-orange-600"
+              className="rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-600"
             >
               Set Timer
             </button>
@@ -83,8 +83,8 @@ export function RoomTimerSection({
       )}
 
       {timer && timer.status === "finished" && (
-        <div className="mt-2 space-y-3">
-          <p className="text-3xl font-bold tracking-tight text-rose-600">
+        <div className="mt-1.5 space-y-2">
+          <p className="text-2xl font-bold tracking-tight text-rose-600">
             Challenge Over
           </p>
           {isAdmin && (
@@ -92,14 +92,14 @@ export function RoomTimerSection({
               <button
                 type="button"
                 onClick={onReset}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-700 hover:bg-slate-50"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 Reset
               </button>
               <button
                 type="button"
                 onClick={() => setShowSetModal(true)}
-                className="rounded-xl bg-orange-500 px-4 py-3 text-base font-bold text-white hover:bg-orange-600"
+                className="rounded-xl bg-orange-500 px-3 py-2 text-sm font-bold text-white hover:bg-orange-600"
               >
                 Set Timer
               </button>
@@ -109,17 +109,17 @@ export function RoomTimerSection({
       )}
 
       {timer && timer.status !== "finished" && (
-        <div className="mt-2 space-y-3">
-          <p className="font-mono text-4xl font-bold tracking-wider text-slate-900 sm:text-5xl">
+        <div className="mt-1.5 space-y-2">
+          <p className="font-mono text-3xl font-bold tracking-wider text-slate-900 sm:text-4xl">
             {formatCountdown(displaySeconds)}
           </p>
 
           {timer.status === "ready" && (
-            <p className="text-sm font-medium text-emerald-600">Ready to start</p>
+            <p className="text-xs font-medium text-emerald-600">Ready to start</p>
           )}
 
           {timer.status === "paused" && (
-            <p className="text-sm font-medium text-amber-600">Paused</p>
+            <p className="text-xs font-medium text-amber-600">Paused</p>
           )}
 
           {isAdmin && (
@@ -128,7 +128,7 @@ export function RoomTimerSection({
                 <button
                   type="button"
                   onClick={onStart}
-                  className="rounded-xl bg-emerald-600 px-5 py-3 text-base font-bold text-white hover:bg-emerald-700"
+                  className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
                 >
                   Start Timer
                 </button>
@@ -138,7 +138,7 @@ export function RoomTimerSection({
                 <button
                   type="button"
                   onClick={onPause}
-                  className="rounded-xl bg-amber-500 px-5 py-3 text-base font-bold text-white hover:bg-amber-600"
+                  className="rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-amber-600"
                 >
                   Pause
                 </button>
@@ -148,7 +148,7 @@ export function RoomTimerSection({
                 <button
                   type="button"
                   onClick={onResume}
-                  className="rounded-xl bg-emerald-600 px-5 py-3 text-base font-bold text-white hover:bg-emerald-700"
+                  className="rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-emerald-700"
                 >
                   Resume
                 </button>
@@ -158,7 +158,7 @@ export function RoomTimerSection({
                 <button
                   type="button"
                   onClick={onReset}
-                  className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-700 hover:bg-slate-50"
+                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   Reset
                 </button>
@@ -168,7 +168,7 @@ export function RoomTimerSection({
                 <button
                   type="button"
                   onClick={() => setShowSetModal(true)}
-                  className="rounded-xl border border-orange-300 bg-orange-50 px-4 py-3 text-base font-semibold text-orange-700 hover:bg-orange-100"
+                  className="rounded-xl border border-orange-300 bg-orange-50 px-3 py-2.5 text-sm font-semibold text-orange-700 hover:bg-orange-100"
                 >
                   Change Duration
                 </button>

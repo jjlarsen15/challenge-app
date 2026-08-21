@@ -34,11 +34,11 @@ export function MemberList({
   }
 
   return (
-    <div className="mt-4 border-t border-slate-100 pt-4">
-      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
+    <div className="mt-3 border-t border-slate-100 pt-3">
+      <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
         Members
       </p>
-      <ul className="space-y-2">
+      <ul className="space-y-1.5">
         {members.map((member) => {
           const isMemberAdmin = member.user_id === adminUserId;
           const code = rejoinCodes[member.id];
@@ -46,7 +46,7 @@ export function MemberList({
           return (
             <li
               key={member.id}
-              className="rounded-lg bg-orange-50 px-3 py-2"
+              className="rounded-lg bg-orange-50 px-2.5 py-1.5"
             >
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-slate-700">

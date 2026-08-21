@@ -17,9 +17,18 @@ export type DbMember = {
   joined_at: string;
 };
 
+export type DbCategory = {
+  id: string;
+  room_id: string;
+  name: string;
+  sort_order: number;
+  created_at: string;
+};
+
 export type DbChallenge = {
   id: string;
   room_id: string;
+  category_id: string;
   name: string;
   goal: number;
   unit: string;
@@ -45,9 +54,18 @@ export type RoomTimer = {
 
 export type ChallengeWithProgress = {
   id: string;
+  categoryId: string;
   name: string;
   goal: number;
   unit: string;
   progress: number;
   memberContributions: { memberId: string; displayName: string; amount: number }[];
+};
+
+export type CategoryWithStats = {
+  id: string;
+  name: string;
+  sortOrder: number;
+  challengeCount: number;
+  completedCount: number;
 };
