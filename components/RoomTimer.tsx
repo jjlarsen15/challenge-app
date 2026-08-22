@@ -1,39 +1,10 @@
 "use client";
 
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useState } from "react";
 import { SetTimerModal } from "@/components/SetTimerModal";
 import type { RoomTimer } from "@/lib/types";
+import { useLiveCountdown } from "@/lib/use-live-countdown";
 import { formatCountdown } from "@/lib/utils";
-
-function computeRemaining(timer: RoomTimer): number {
-  if (timer.status === "running" && timer.startedAt) {
-    const elapsed = Math.floor((Date.now() - new Date(timer.startedAt).getTime()) / 1000);
-    return Math.max(0, timer.durationSeconds - elapsed);
-  }
-  return timer.secondsRemaining;
-}
-
-function useLiveCountdown(timer: RoomTimer | null): number {
-  const [, tick] = useReducer((c: number) => c + 1, 0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isRunning = timer?.status === "running";
-
-  useEffect(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    intervalRef.current = null;
-
-    if (isRunning) {
-      intervalRef.current = setInterval(tick, 1000);
-    }
-
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [isRunning]);
-
-  if (!timer) return 0;
-  return computeRemaining(timer);
-}
 
 type RoomTimerProps = {
   timer: RoomTimer | null;
@@ -62,6 +33,8 @@ export function RoomTimerSection({
   const canChangeDuration = timer?.status === "ready" && showSetupControls;
   const initialHours = timer ? Math.floor(timer.durationSeconds / 3600) : 0;
   const initialMinutes = timer ? Math.floor((timer.durationSeconds % 3600) / 60) : 0;
+  const isFinished =
+    timer?.status === "finished" || (timer?.status === "running" && displaySeconds <= 0);
 
   return (
     <div className="mt-3 text-center">
@@ -84,7 +57,7 @@ export function RoomTimerSection({
         </div>
       )}
 
-      {timer && timer.status === "finished" && (
+      {timer && isFinished && (
         <div className="mt-1.5 space-y-2">
           <p className="text-2xl font-bold tracking-tight text-rose-600">Time&apos;s Up</p>
           {isAdmin && showSetupControls && (
@@ -108,7 +81,7 @@ export function RoomTimerSection({
         </div>
       )}
 
-      {timer && timer.status !== "finished" && (
+      {timer && !isFinished && (
         <div className="mt-1.5 space-y-2">
           <p className="font-mono text-3xl font-bold tracking-wider text-ink sm:text-4xl">
             {formatCountdown(displaySeconds)}

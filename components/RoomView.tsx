@@ -7,11 +7,17 @@ import { CategoryFormModal } from "@/components/CategoryFormModal";
 import { ChallengeCard } from "@/components/ChallengeCard";
 import { ChallengeFormModal } from "@/components/ChallengeFormModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { GameOverScreen } from "@/components/GameOverScreen";
 import { MemberList } from "@/components/MemberList";
 import { PersonalTitlePanel } from "@/components/PersonalTitlePanel";
 import { RoomTimerSection } from "@/components/RoomTimer";
 import { TitleReveal } from "@/components/TitleReveal";
 import { isAdventurerRarity } from "@/lib/adventurer-titles";
+import {
+  buildAdventureResults,
+  gameOverDismissKey,
+} from "@/lib/adventure-results";
+import { isTimerExpired, useLiveCountdown } from "@/lib/use-live-countdown";
 import { useRoom } from "@/lib/use-room";
 import type { AdventurerRarity, CategoryWithStats, ChallengeWithProgress } from "@/lib/types";
 
@@ -39,6 +45,7 @@ export function RoomView({ code }: RoomViewProps) {
     members,
     categories,
     challenges,
+    contributions,
     timer,
     currentMemberId,
     isAdmin,
@@ -72,6 +79,8 @@ export function RoomView({ code }: RoomViewProps) {
   const [showPersonalRerollConfirm, setShowPersonalRerollConfirm] = useState(false);
   const [personalRerollBusy, setPersonalRerollBusy] = useState(false);
   const [personalRerollError, setPersonalRerollError] = useState<string | null>(null);
+  const [dismissVersion, setDismissVersion] = useState(0);
+  const [forceShowResults, setForceShowResults] = useState(false);
 
   const [formMode, setFormMode] = useState<"add" | "edit">("add");
   const [showFormModal, setShowFormModal] = useState(false);
@@ -138,6 +147,72 @@ export function RoomView({ code }: RoomViewProps) {
     () => members.find((m) => m.id === currentMemberId) ?? null,
     [members, currentMemberId],
   );
+
+  const liveSeconds = useLiveCountdown(timer);
+  const timerExpired = isTimerExpired(timer, liveSeconds);
+
+  const adventureResults = useMemo(
+    () => buildAdventureResults(members, categories, challenges, contributions),
+    [members, categories, challenges, contributions],
+  );
+
+  // sessionStorage + dismissVersion (bumped on write) — no effect sync needed.
+  let adminDismissedGameOver = false;
+  if (room?.id && timerExpired) {
+    try {
+      adminDismissedGameOver =
+        dismissVersion >= 0 &&
+        window.sessionStorage.getItem(gameOverDismissKey(room.id)) === "1";
+    } catch {
+      adminDismissedGameOver = false;
+    }
+  }
+
+  const showGameOver =
+    timerExpired &&
+    (forceShowResults || !(isAdmin && adminDismissedGameOver));
+
+  function clearGameOverDismiss() {
+    if (room?.id) {
+      try {
+        window.sessionStorage.removeItem(gameOverDismissKey(room.id));
+      } catch {
+        // ignore
+      }
+    }
+    setDismissVersion((n) => n + 1);
+    setForceShowResults(false);
+  }
+
+  function handleReturnToAdventure() {
+    if (!room?.id) return;
+    try {
+      window.sessionStorage.setItem(gameOverDismissKey(room.id), "1");
+    } catch {
+      // ignore
+    }
+    setDismissVersion((n) => n + 1);
+    setForceShowResults(false);
+  }
+
+  function handleOpenFinalResults() {
+    setForceShowResults(true);
+  }
+
+  async function handleResetTimer() {
+    clearGameOverDismiss();
+    await resetTimer();
+  }
+
+  async function handleStartTimer() {
+    clearGameOverDismiss();
+    await startTimer();
+  }
+
+  async function handleSetTimerDuration(seconds: number) {
+    clearGameOverDismiss();
+    await setTimerDuration(seconds);
+  }
 
   // Show title reveal for first assignment or admin reroll on this device.
   useEffect(() => {
@@ -287,6 +362,14 @@ export function RoomView({ code }: RoomViewProps) {
 
   return (
     <div className="min-h-full bg-sand-50">
+      {showGameOver && (
+        <GameOverScreen
+          results={adventureResults}
+          isAdmin={isAdmin}
+          onReturnToAdventure={isAdmin ? handleReturnToAdventure : undefined}
+        />
+      )}
+
       <div className="mx-auto w-full max-w-md px-3 py-4 pb-8 sm:px-4 sm:py-6">
         <div className="mb-3 flex items-center justify-between gap-2">
           <Link
@@ -295,19 +378,30 @@ export function RoomView({ code }: RoomViewProps) {
           >
             ← Back home
           </Link>
-          {isAdmin && (
-            <button
-              type="button"
-              onClick={() => setEditMode((open) => !open)}
-              className={`rounded-full px-3 py-1 text-xs font-bold ${
-                editMode
-                  ? "bg-ink text-white"
-                  : "border border-sand-200 bg-white text-ink-muted"
-              }`}
-            >
-              {editMode ? "Done Editing" : "Edit Adventure"}
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {isAdmin && timerExpired && adminDismissedGameOver && !forceShowResults && (
+              <button
+                type="button"
+                onClick={handleOpenFinalResults}
+                className="rounded-full border border-gold/40 bg-gold-soft/40 px-3 py-1 text-xs font-bold text-ink"
+              >
+                Final Results
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => setEditMode((open) => !open)}
+                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                  editMode
+                    ? "bg-ink text-white"
+                    : "border border-sand-200 bg-white text-ink-muted"
+                }`}
+              >
+                {editMode ? "Done Editing" : "Edit Adventure"}
+              </button>
+            )}
+          </div>
         </div>
 
         {editMode && isAdmin && (
@@ -348,11 +442,11 @@ export function RoomView({ code }: RoomViewProps) {
             timer={timer}
             isAdmin={isAdmin}
             showSetupControls={canEdit}
-            onSetDuration={setTimerDuration}
-            onStart={startTimer}
+            onSetDuration={handleSetTimerDuration}
+            onStart={handleStartTimer}
             onPause={pauseTimer}
             onResume={resumeTimer}
-            onReset={resetTimer}
+            onReset={handleResetTimer}
           />
 
           <div className="mt-3 flex items-center justify-between rounded-xl bg-sand-50 px-3 py-2">

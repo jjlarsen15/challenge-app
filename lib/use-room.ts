@@ -95,6 +95,7 @@ type UseRoomResult = {
   members: DbMember[];
   categories: CategoryWithStats[];
   challenges: ChallengeWithProgress[];
+  contributions: DbContribution[];
   timer: RoomTimer | null;
   currentUserId: string | null;
   currentMemberId: string | null;
@@ -815,6 +816,7 @@ export function useRoom(code: string): UseRoomResult {
     members,
     categories,
     challenges,
+    contributions,
     timer,
     currentUserId,
     currentMemberId,
