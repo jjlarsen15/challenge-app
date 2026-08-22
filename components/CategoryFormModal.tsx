@@ -26,11 +26,11 @@ export function CategoryFormModal({
         className="relative w-full max-w-md rounded-2xl bg-white p-5 shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
-        <h2 className="text-xl font-bold text-slate-900">
-          {mode === "add" ? "Add Location" : "Rename Location"}
+        <h2 className="text-xl font-bold text-ink">
+          {mode === "add" ? "Add Stage" : "Rename Stage"}
         </h2>
-        <p className="mt-1 text-sm text-slate-500">
-          Locations group challenges by place (e.g. Climbing Gym, Park).
+        <p className="mt-1 text-sm text-ink-muted">
+          Stages are stops on the adventure route (e.g. Climbing Gym, Park).
         </p>
         <CategoryFormFields
           key={`${mode}-${initialName}`}
@@ -73,7 +73,7 @@ function CategoryFormFields({
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="e.g. Climbing Gym"
-          className="w-full rounded-xl border border-slate-200 px-4 py-3 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
+          className="w-full rounded-xl border border-sand-200 px-4 py-3 text-base outline-none focus:border-ember focus:ring-2 focus:ring-ember/20"
           required
           autoFocus
         />
@@ -82,15 +82,15 @@ function CategoryFormFields({
         <button
           type="button"
           onClick={onClose}
-          className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-base font-semibold text-slate-700 hover:bg-slate-50"
+          className="flex-1 rounded-xl border border-sand-200 px-4 py-3 text-base font-semibold text-ink-muted hover:bg-sand-50"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="flex-1 rounded-xl bg-orange-500 px-4 py-3 text-base font-bold text-white hover:bg-orange-600"
+          className="flex-1 rounded-xl bg-ember px-4 py-3 text-base font-bold text-white hover:bg-ember-dark"
         >
-          {mode === "add" ? "Add Location" : "Save"}
+          {mode === "add" ? "Add Stage" : "Save"}
         </button>
       </div>
     </form>

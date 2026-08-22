@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getCurrentUserId } from "./auth";
+import { parseAdventurerRarity } from "./adventurer-titles";
 import { supabase } from "./supabase";
 import type {
   CategoryWithStats,
@@ -15,6 +16,80 @@ import type {
 } from "./types";
 import { deriveTimerState } from "./utils";
 
+const MEMBER_SELECT =
+  "id, room_id, user_id, display_name, joined_at, adventurer_title, adventurer_rarity, personal_rerolls_remaining";
+
+const MEMBER_SELECT_TITLES =
+  "id, room_id, user_id, display_name, joined_at, adventurer_title, adventurer_rarity";
+
+const MEMBER_SELECT_FALLBACK =
+  "id, room_id, user_id, display_name, joined_at";
+
+async function fetchRoomMembers(roomId: string): Promise<DbMember[]> {
+  const withRerolls = await supabase
+    .from("members")
+    .select(MEMBER_SELECT)
+    .eq("room_id", roomId);
+
+  if (!withRerolls.error && withRerolls.data) {
+    return (withRerolls.data as Record<string, unknown>[]).map((row) =>
+      mapMemberRow(row),
+    );
+  }
+
+  const withTitles = await supabase
+    .from("members")
+    .select(MEMBER_SELECT_TITLES)
+    .eq("room_id", roomId);
+
+  if (!withTitles.error && withTitles.data) {
+    return (withTitles.data as Record<string, unknown>[]).map((row) =>
+      mapMemberRow(row),
+    );
+  }
+
+  // Titles / reroll migrations may not be applied yet — still load membership.
+  const fallback = await supabase
+    .from("members")
+    .select(MEMBER_SELECT_FALLBACK)
+    .eq("room_id", roomId);
+
+  if (fallback.error || !fallback.data) return [];
+  return (fallback.data as Record<string, unknown>[]).map((row) => mapMemberRow(row));
+}
+
+function mapMemberRow(row: Record<string, unknown>, fallback?: DbMember): DbMember {
+  const rawRerolls = row.personal_rerolls_remaining;
+  let personalRerolls =
+    typeof rawRerolls === "number"
+      ? rawRerolls
+      : typeof rawRerolls === "string" && rawRerolls !== ""
+        ? Number(rawRerolls)
+        : (fallback?.personal_rerolls_remaining ?? 2);
+  if (!Number.isFinite(personalRerolls) || personalRerolls < 0) {
+    personalRerolls = fallback?.personal_rerolls_remaining ?? 2;
+  }
+
+  return {
+    id: (row.id as string) ?? fallback?.id ?? "",
+    room_id: (row.room_id as string) ?? fallback?.room_id ?? "",
+    user_id: (row.user_id as string) ?? fallback?.user_id ?? "",
+    display_name: (row.display_name as string) ?? fallback?.display_name ?? "",
+    joined_at:
+      (row.joined_at as string | undefined) ??
+      (row.created_at as string | undefined) ??
+      fallback?.joined_at ??
+      "",
+    adventurer_title:
+      (row.adventurer_title as string | null | undefined) ??
+      fallback?.adventurer_title ??
+      null,
+    adventurer_rarity:
+      parseAdventurerRarity(row.adventurer_rarity) ?? fallback?.adventurer_rarity ?? null,
+    personal_rerolls_remaining: personalRerolls,
+  };
+}
+
 type UseRoomResult = {
   room: DbRoom | null;
   members: DbMember[];
@@ -27,6 +102,8 @@ type UseRoomResult = {
   loading: boolean;
   error: string | null;
   generateMemberRejoinCode: (memberId: string) => Promise<string>;
+  rerollMemberTitle: (memberId: string) => Promise<void>;
+  rerollOwnTitle: () => Promise<void>;
   addCategory: (name: string) => Promise<void>;
   renameCategory: (id: string, name: string) => Promise<void>;
   deleteCategory: (id: string) => Promise<void>;
@@ -54,7 +131,7 @@ function buildChallenges(
   contributions: DbContribution[],
   members: DbMember[],
 ): ChallengeWithProgress[] {
-  const memberMap = new Map(members.map((m) => [m.id, m.display_name]));
+  const memberMap = new Map(members.map((m) => [m.id, m]));
 
   return rawChallenges.map((ch) => {
     const contribs = contributions.filter((c) => c.challenge_id === ch.id);
@@ -66,11 +143,16 @@ function buildChallenges(
     }
 
     const memberContributions = Array.from(byMember.entries())
-      .map(([memberId, amount]) => ({
-        memberId,
-        displayName: memberMap.get(memberId) ?? "Unknown",
-        amount,
-      }))
+      .map(([memberId, amount]) => {
+        const member = memberMap.get(memberId);
+        return {
+          memberId,
+          displayName: member?.display_name ?? "Unknown",
+          adventurerTitle: member?.adventurer_title ?? null,
+          adventurerRarity: member?.adventurer_rarity ?? null,
+          amount,
+        };
+      })
       .filter((mc) => mc.amount !== 0)
       .sort((a, b) => b.amount - a.amount);
 
@@ -148,11 +230,8 @@ export function useRoom(code: string): UseRoomResult {
 
       const roomId = roomData.id;
 
-      const [membersRes, categoriesRes, challengesRes] = await Promise.all([
-        supabase
-          .from("members")
-          .select("id, room_id, user_id, display_name, joined_at")
-          .eq("room_id", roomId),
+      const [membersData, categoriesRes, challengesRes] = await Promise.all([
+        fetchRoomMembers(roomId),
         supabase
           .from("categories")
           .select("id, room_id, name, sort_order, created_at")
@@ -162,7 +241,7 @@ export function useRoom(code: string): UseRoomResult {
       ]);
 
       if (!cancelled) {
-        setMembers((membersRes.data as DbMember[]) ?? []);
+        setMembers(membersData);
         setRawCategories((categoriesRes.data as DbCategory[]) ?? []);
         setRawChallenges((challengesRes.data as DbChallenge[]) ?? []);
       }
@@ -207,27 +286,15 @@ export function useRoom(code: string): UseRoomResult {
         { event: "*", schema: "public", table: "members", filter: `room_id=eq.${roomId}` },
         (payload) => {
           if (payload.eventType === "INSERT") {
-            const row = payload.new as Record<string, unknown>;
-            const member: DbMember = {
-              id: row.id as string,
-              room_id: row.room_id as string,
-              user_id: row.user_id as string,
-              display_name: row.display_name as string,
-              joined_at: (row.joined_at ?? row.created_at ?? "") as string,
-            };
-            setMembers((prev) => [...prev, member]);
+            const member = mapMemberRow(payload.new as Record<string, unknown>);
+            setMembers((prev) => {
+              if (prev.some((m) => m.id === member.id)) return prev;
+              return [...prev, member];
+            });
           } else if (payload.eventType === "UPDATE") {
             const row = payload.new as Record<string, unknown>;
             setMembers((prev) =>
-              prev.map((m) =>
-                m.id === row.id
-                  ? {
-                      ...m,
-                      user_id: row.user_id as string,
-                      display_name: row.display_name as string,
-                    }
-                  : m,
-              ),
+              prev.map((m) => (m.id === row.id ? mapMemberRow(row, m) : m)),
             );
           } else if (payload.eventType === "DELETE") {
             const old = payload.old as Record<string, unknown>;
@@ -314,6 +381,140 @@ export function useRoom(code: string): UseRoomResult {
   const categories = buildCategoryStats(rawCategories, challenges);
   const timer = room ? deriveTimerState(room) : null;
 
+  // Keep auth user id in sync (session can hydrate after first paint).
+  useEffect(() => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUserId(session?.user?.id ?? null);
+    });
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  // Room admin is also a participating member. If their member row is missing
+  // from local state (or absent in the DB), resolve/create it so contribution
+  // controls and member_id-based writes work.
+  const adminNeedsMembership = !!(
+    room &&
+    currentUserId &&
+    room.admin_user_id === currentUserId &&
+    !members.some((m) => m.user_id === currentUserId)
+  );
+  const adminMemberEnsureAttempted = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || !adminNeedsMembership || !room || !currentUserId) return;
+
+    const attemptKey = `${room.id}:${currentUserId}`;
+    if (adminMemberEnsureAttempted.current === attemptKey) return;
+    adminMemberEnsureAttempted.current = attemptKey;
+
+    let cancelled = false;
+    void (async () => {
+      const roomId = room.id;
+
+      const existing = await supabase
+        .from("members")
+        .select(MEMBER_SELECT_FALLBACK)
+        .eq("room_id", roomId)
+        .eq("user_id", currentUserId)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (existing.data) {
+        const row = mapMemberRow(existing.data as Record<string, unknown>);
+        setMembers((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+        const refreshed = await fetchRoomMembers(roomId);
+        if (!cancelled && refreshed.length > 0) setMembers(refreshed);
+        return;
+      }
+
+      if (existing.error) {
+        adminMemberEnsureAttempted.current = null;
+        return;
+      }
+
+      const inserted = await supabase
+        .from("members")
+        .insert({
+          room_id: roomId,
+          user_id: currentUserId,
+          display_name: "Host",
+        })
+        .select(MEMBER_SELECT_FALLBACK)
+        .single();
+
+      if (cancelled) return;
+
+      if (inserted.error || !inserted.data) {
+        adminMemberEnsureAttempted.current = null;
+        return;
+      }
+
+      const row = mapMemberRow(inserted.data as Record<string, unknown>);
+      setMembers((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+      const refreshed = await fetchRoomMembers(roomId);
+      if (!cancelled && refreshed.length > 0) setMembers(refreshed);
+    })();
+
+    return () => {
+      cancelled = true;
+      if (adminMemberEnsureAttempted.current === attemptKey) {
+        adminMemberEnsureAttempted.current = null;
+      }
+    };
+  }, [loading, adminNeedsMembership, room, currentUserId]);
+
+  // Backfill titles for members created before the titles migration.
+  const titleEnsureAttempted = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentMemberId) return;
+    const me = members.find((m) => m.id === currentMemberId);
+    if (!me || me.adventurer_title) return;
+    if (titleEnsureAttempted.current === currentMemberId) return;
+    titleEnsureAttempted.current = currentMemberId;
+
+    let cancelled = false;
+    void (async () => {
+      const { data, error: err } = await supabase.rpc("ensure_adventurer_title", {
+        p_member_id: currentMemberId,
+      });
+      if (cancelled) return;
+      if (err) {
+        // Migration may not be applied yet; allow a later retry after remount.
+        titleEnsureAttempted.current = null;
+        return;
+      }
+      const result = data as {
+        error?: string;
+        adventurer_title?: string;
+        adventurer_rarity?: string;
+      };
+      if (result.error || !result.adventurer_title) {
+        titleEnsureAttempted.current = null;
+        return;
+      }
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.id === currentMemberId
+            ? {
+                ...m,
+                adventurer_title: result.adventurer_title ?? m.adventurer_title,
+                adventurer_rarity:
+                  parseAdventurerRarity(result.adventurer_rarity) ?? m.adventurer_rarity,
+              }
+            : m,
+        ),
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentMemberId, members]);
+
   const generateMemberRejoinCode = useCallback(
     async (memberId: string): Promise<string> => {
       const { data, error: err } = await supabase.rpc("generate_member_rejoin_code", {
@@ -326,6 +527,68 @@ export function useRoom(code: string): UseRoomResult {
     },
     [],
   );
+
+  const rerollMemberTitle = useCallback(async (memberId: string) => {
+    const { data, error: err } = await supabase.rpc("reroll_adventurer_title", {
+      p_member_id: memberId,
+    });
+    if (err) throw new Error(err.message);
+    const result = data as {
+      error?: string;
+      adventurer_title?: string;
+      adventurer_rarity?: string;
+    };
+    if (result.error) throw new Error(result.error);
+
+    if (result.adventurer_title) {
+      setMembers((prev) =>
+        prev.map((m) =>
+          m.id === memberId
+            ? {
+                ...m,
+                adventurer_title: result.adventurer_title ?? m.adventurer_title,
+                adventurer_rarity:
+                  parseAdventurerRarity(result.adventurer_rarity) ?? m.adventurer_rarity,
+              }
+            : m,
+        ),
+      );
+    }
+  }, []);
+
+  const rerollOwnTitle = useCallback(async () => {
+    if (!roomIdRef.current) throw new Error("Room not loaded");
+    const { data, error: err } = await supabase.rpc("reroll_own_adventurer_title", {
+      p_room_id: roomIdRef.current,
+    });
+    if (err) throw new Error(err.message);
+    const result = data as {
+      error?: string;
+      adventurer_title?: string;
+      adventurer_rarity?: string;
+      personal_rerolls_remaining?: number;
+    };
+    if (result.error) throw new Error(result.error);
+
+    if (!currentUserId || !result.adventurer_title) return;
+
+    setMembers((prev) =>
+      prev.map((m) =>
+        m.user_id === currentUserId
+          ? {
+              ...m,
+              adventurer_title: result.adventurer_title ?? m.adventurer_title,
+              adventurer_rarity:
+                parseAdventurerRarity(result.adventurer_rarity) ?? m.adventurer_rarity,
+              personal_rerolls_remaining:
+                typeof result.personal_rerolls_remaining === "number"
+                  ? result.personal_rerolls_remaining
+                  : Math.max(0, m.personal_rerolls_remaining - 1),
+            }
+          : m,
+      ),
+    );
+  }, [currentUserId]);
 
   const addCategory = useCallback(async (name: string) => {
     if (!roomIdRef.current) return;
@@ -421,7 +684,46 @@ export function useRoom(code: string): UseRoomResult {
 
   const addContribution = useCallback(
     async (challengeId: string, amount: number) => {
-      if (!currentMemberId) throw new Error("Not a member of this room");
+      let memberId = members.find((m) => m.user_id === currentUserId)?.id ?? null;
+
+      // Admin participates like any member — never block contributions on edit mode.
+      if (
+        !memberId &&
+        room &&
+        currentUserId &&
+        room.admin_user_id === currentUserId &&
+        roomIdRef.current
+      ) {
+        const existing = await supabase
+          .from("members")
+          .select(MEMBER_SELECT_FALLBACK)
+          .eq("room_id", roomIdRef.current)
+          .eq("user_id", currentUserId)
+          .maybeSingle();
+
+        if (existing.data) {
+          const row = mapMemberRow(existing.data as Record<string, unknown>);
+          memberId = row.id;
+          setMembers((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+        } else if (!existing.error) {
+          const inserted = await supabase
+            .from("members")
+            .insert({
+              room_id: roomIdRef.current,
+              user_id: currentUserId,
+              display_name: "Host",
+            })
+            .select(MEMBER_SELECT_FALLBACK)
+            .single();
+          if (inserted.data) {
+            const row = mapMemberRow(inserted.data as Record<string, unknown>);
+            memberId = row.id;
+            setMembers((prev) => (prev.some((m) => m.id === row.id) ? prev : [...prev, row]));
+          }
+        }
+      }
+
+      if (!memberId) throw new Error("Not a member of this room");
 
       if (amount < 0) {
         const total = contributions
@@ -436,10 +738,10 @@ export function useRoom(code: string): UseRoomResult {
 
       const { error: err } = await supabase
         .from("contributions")
-        .insert({ challenge_id: challengeId, member_id: currentMemberId, amount });
+        .insert({ challenge_id: challengeId, member_id: memberId, amount });
       if (err) throw new Error(err.message);
     },
-    [currentMemberId, contributions],
+    [currentUserId, room, members, contributions],
   );
 
   const setTimerDuration = useCallback(async (seconds: number) => {
@@ -520,6 +822,8 @@ export function useRoom(code: string): UseRoomResult {
     loading,
     error,
     generateMemberRejoinCode,
+    rerollMemberTitle,
+    rerollOwnTitle,
     addCategory,
     renameCategory,
     deleteCategory,

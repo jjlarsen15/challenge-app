@@ -1,3 +1,7 @@
+import type { AdventurerRarity } from "./adventurer-titles";
+
+export type { AdventurerRarity };
+
 export type DbRoom = {
   id: string;
   code: string;
@@ -15,6 +19,9 @@ export type DbMember = {
   user_id: string;
   display_name: string;
   joined_at: string;
+  adventurer_title: string | null;
+  adventurer_rarity: AdventurerRarity | null;
+  personal_rerolls_remaining: number;
 };
 
 export type DbCategory = {
@@ -59,7 +66,13 @@ export type ChallengeWithProgress = {
   goal: number;
   unit: string;
   progress: number;
-  memberContributions: { memberId: string; displayName: string; amount: number }[];
+  memberContributions: {
+    memberId: string;
+    displayName: string;
+    adventurerTitle: string | null;
+    adventurerRarity: AdventurerRarity | null;
+    amount: number;
+  }[];
 };
 
 export type CategoryWithStats = {

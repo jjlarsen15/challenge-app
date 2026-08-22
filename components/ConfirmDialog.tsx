@@ -7,6 +7,7 @@ type ConfirmDialogProps = {
   title: string;
   message: string;
   confirmLabel?: string;
+  cancelLabel?: string;
   busy?: boolean;
   error?: string | null;
   onConfirm: () => void | Promise<void>;
@@ -18,6 +19,7 @@ export function ConfirmDialog({
   title,
   message,
   confirmLabel = "Delete",
+  cancelLabel = "Cancel",
   busy = false,
   error = null,
   onConfirm,
@@ -55,7 +57,7 @@ export function ConfirmDialog({
         onClick={(event) => event.stopPropagation()}
       >
         <h2 className="text-xl font-bold text-slate-900">{title}</h2>
-        <p className="mt-2 text-base text-slate-600">{message}</p>
+        <p className="mt-2 whitespace-pre-line text-base text-slate-600">{message}</p>
         {error && (
           <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
             {error}
@@ -71,7 +73,7 @@ export function ConfirmDialog({
             }}
             className="flex-1 rounded-xl border border-slate-200 px-4 py-3 text-base font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             type="button"

@@ -1,12 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { rarityTextClass } from "@/lib/adventurer-titles";
 import type { ChallengeWithProgress } from "@/lib/types";
 import { formatPercent } from "@/lib/utils";
 
 type ChallengeCardProps = {
   challenge: ChallengeWithProgress;
-  isAdmin: boolean;
+  /** Structural edit/delete — admin + Edit Adventure only. */
+  canEdit: boolean;
+  /**
+   * Progress contribution — any participating member, including the room admin.
+   * Must not be tied to canEdit / edit mode.
+   */
   hasMembership: boolean;
   onAddProgress: (challengeId: string, amount: number) => Promise<void> | void;
   onEdit: (challenge: ChallengeWithProgress) => void;
@@ -15,68 +21,120 @@ type ChallengeCardProps = {
 
 export function ChallengeCard({
   challenge,
-  isAdmin,
+  canEdit,
   hasMembership,
   onAddProgress,
   onEdit,
   onDelete,
 }: ChallengeCardProps) {
-  const [showAdjust, setShowAdjust] = useState(false);
-  const [adjustValue, setAdjustValue] = useState("");
+  const [amount, setAmount] = useState("10");
   const [showContributions, setShowContributions] = useState(false);
-  const [adjustError, setAdjustError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [justCompleted, setJustCompleted] = useState(false);
+  const wasComplete = useRef(false);
 
   const percent = formatPercent(challenge.progress, challenge.goal);
+  const isComplete = challenge.progress >= challenge.goal && challenge.goal > 0;
+  const isBinary = challenge.goal === 1;
+
+  useEffect(() => {
+    if (isComplete && !wasComplete.current) {
+      setJustCompleted(true);
+      const timeout = window.setTimeout(() => setJustCompleted(false), 800);
+      wasComplete.current = true;
+      return () => window.clearTimeout(timeout);
+    }
+    if (!isComplete) {
+      wasComplete.current = false;
+    }
+  }, [isComplete]);
 
   async function applyAmount(signedAmount: number) {
     if (!Number.isFinite(signedAmount) || signedAmount === 0) return;
     setBusy(true);
-    setAdjustError(null);
+    setActionError(null);
     try {
       await onAddProgress(challenge.id, signedAmount);
-      setAdjustValue("");
-      setShowAdjust(false);
     } catch (err) {
-      setAdjustError(err instanceof Error ? err.message : "Failed to update progress");
+      setActionError(err instanceof Error ? err.message : "Failed to update progress");
     } finally {
       setBusy(false);
     }
   }
 
-  function handleAdjust(sign: 1 | -1) {
-    const amount = Number(adjustValue);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setAdjustError("Enter a positive amount");
+  function parsedAmount(): number | null {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) return null;
+    return value;
+  }
+
+  function nudgeAmount(delta: number) {
+    const current = parsedAmount() ?? 0;
+    const next = Math.max(1, current + delta);
+    setAmount(String(next));
+    setActionError(null);
+  }
+
+  function handleAddProgress() {
+    const value = parsedAmount();
+    if (value === null) {
+      setActionError("Enter a positive amount");
       return;
     }
-    void applyAmount(sign * amount);
+    void applyAmount(value);
+  }
+
+  function handleSubtractProgress() {
+    const value = parsedAmount();
+    if (value === null) {
+      setActionError("Enter a positive amount");
+      return;
+    }
+    void applyAmount(-value);
   }
 
   return (
-    <article className="rounded-xl border border-orange-100 bg-white p-3 shadow-sm sm:p-4">
+    <article
+      className={`rounded-xl border bg-white p-3 shadow-sm sm:p-3.5 ${
+        isComplete ? "border-gold/50 bg-gold-soft/20" : "border-sand-200"
+      } ${justCompleted ? "quest-just-completed" : ""}`}
+    >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <h3 className="text-base font-bold leading-tight text-slate-900 sm:text-lg">
-            {challenge.name}
-          </h3>
-          <p className="mt-0.5 text-sm text-slate-600 sm:text-base">
-            <span className="font-semibold text-slate-900">
+          <div className="flex items-center gap-2">
+            {isComplete && (
+              <span
+                className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-pine text-[11px] font-bold text-white"
+                aria-hidden
+              >
+                ✓
+              </span>
+            )}
+            <h3 className="text-base font-bold leading-tight text-ink">{challenge.name}</h3>
+          </div>
+          <p className="mt-0.5 text-sm text-ink-muted">
+            <span className="font-semibold text-ink">
               {challenge.progress.toLocaleString()}
             </span>
             {" / "}
             {challenge.goal.toLocaleString()} {challenge.unit}
-            <span className="ml-2 text-xs font-medium text-orange-600 sm:text-sm">
-              {percent}%
-            </span>
+            {!isComplete && (
+              <span className="ml-2 text-xs font-medium text-ember">{percent}%</span>
+            )}
           </p>
+          {isComplete && (
+            <p className="mt-0.5 text-xs font-semibold uppercase tracking-wide text-pine">
+              Quest Complete
+            </p>
+          )}
         </div>
-        {isAdmin && (
+        {canEdit && (
           <div className="flex shrink-0 gap-1.5">
             <button
               type="button"
               onClick={() => onEdit(challenge)}
-              className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              className="rounded-lg border border-sand-200 px-2.5 py-1 text-xs font-semibold text-ink-muted hover:bg-sand-50"
             >
               Edit
             </button>
@@ -91,89 +149,119 @@ export function ChallengeCard({
         )}
       </div>
 
-      <div className="mt-2 h-3 overflow-hidden rounded-full bg-orange-100">
+      <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-sand-100">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-orange-400 to-rose-500 transition-all duration-300"
+          className={`h-full rounded-full transition-all duration-300 ${
+            isComplete ? "bg-gold" : "bg-pine"
+          }`}
           style={{ width: `${percent}%` }}
         />
       </div>
 
       {hasMembership && (
         <div className="mt-2.5 space-y-2">
-          <div className="grid grid-cols-4 gap-1.5">
-            {[1, 5, 10].map((amount) => (
+          {isBinary && !isComplete ? (
+            <>
               <button
-                key={amount}
                 type="button"
                 disabled={busy}
-                onClick={() => void applyAmount(amount)}
-                className="rounded-xl bg-orange-500 px-1 py-2.5 text-sm font-bold text-white transition hover:bg-orange-600 active:scale-95 disabled:opacity-50"
+                onClick={() => void applyAmount(1)}
+                className="w-full rounded-xl bg-pine px-3 py-3 text-sm font-bold text-white transition hover:bg-pine/90 active:scale-[0.99] disabled:opacity-50"
               >
-                +{amount}
+                Complete Quest
               </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => {
-                setShowAdjust((open) => !open);
-                setAdjustError(null);
-              }}
-              className="rounded-xl border-2 border-orange-300 bg-orange-50 px-1 py-2.5 text-xs font-bold text-orange-700 transition hover:bg-orange-100 active:scale-95"
-            >
-              Adjust
-            </button>
-          </div>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void applyAmount(-1)}
+                className="w-full text-center text-xs font-semibold text-ink-muted underline-offset-2 hover:underline disabled:opacity-50"
+              >
+                Undo complete
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-3 gap-1.5">
+                {[1, 10, 25].map((quick) => (
+                  <button
+                    key={quick}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void applyAmount(quick)}
+                    className="rounded-xl bg-pine px-1 py-2.5 text-sm font-bold text-white transition hover:bg-pine/90 active:scale-95 disabled:opacity-50"
+                  >
+                    +{quick}
+                  </button>
+                ))}
+              </div>
 
-          {showAdjust && (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
-              <label className="block">
-                <span className="mb-1 block text-xs font-medium text-slate-600">
-                  Amount
-                </span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  min={1}
-                  value={adjustValue}
-                  onChange={(event) => setAdjustValue(event.target.value)}
-                  placeholder="e.g. 15"
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
-                  autoFocus
-                />
-              </label>
-              <div className="mt-2 grid grid-cols-2 gap-2">
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => handleAdjust(1)}
-                  className="rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  onClick={() => nudgeAmount(-1)}
+                  aria-label="Decrease amount"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sand-200 bg-sand-50 text-lg font-bold text-ink hover:bg-sand-100 active:scale-95 disabled:opacity-50"
                 >
-                  Add
+                  −
+                </button>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={amount}
+                  onChange={(event) => {
+                    const next = event.target.value.replace(/[^\d]/g, "");
+                    setAmount(next);
+                    setActionError(null);
+                  }}
+                  aria-label="Contribution amount"
+                  className="h-11 min-w-0 flex-1 rounded-xl border border-sand-200 bg-white px-3 text-center text-base font-semibold text-ink outline-none focus:border-pine focus:ring-2 focus:ring-pine/20"
+                />
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => nudgeAmount(1)}
+                  aria-label="Increase amount"
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-sand-200 bg-sand-50 text-lg font-bold text-ink hover:bg-sand-100 active:scale-95 disabled:opacity-50"
+                >
+                  +
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={handleAddProgress}
+                  className="rounded-xl bg-pine px-3 py-2.5 text-sm font-bold text-white hover:bg-pine/90 active:scale-[0.99] disabled:opacity-50"
+                >
+                  Add Progress
                 </button>
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => handleAdjust(-1)}
-                  className="rounded-xl bg-slate-800 px-3 py-2.5 text-sm font-bold text-white hover:bg-slate-900 disabled:opacity-50"
+                  onClick={handleSubtractProgress}
+                  className="rounded-xl border border-sand-200 bg-sand-50 px-3 py-2.5 text-sm font-bold text-ink-muted hover:bg-sand-100 active:scale-[0.99] disabled:opacity-50"
                 >
                   Subtract
                 </button>
               </div>
-              {adjustError && (
-                <p className="mt-2 text-xs font-medium text-rose-600">{adjustError}</p>
-              )}
-            </div>
+            </>
+          )}
+
+          {actionError && (
+            <p className="text-xs font-medium text-rose-600">{actionError}</p>
           )}
         </div>
       )}
 
       {challenge.memberContributions.length > 0 && (
-        <div className="mt-2 border-t border-slate-100 pt-2">
+        <div className="mt-2 border-t border-sand-100 pt-2">
           <button
             type="button"
             onClick={() => setShowContributions((open) => !open)}
-            className="flex w-full items-center justify-between text-left text-xs font-semibold uppercase tracking-wide text-slate-500"
+            className="flex w-full items-center justify-between text-left text-xs font-semibold uppercase tracking-wide text-ink-muted"
           >
             <span>Contributions ({challenge.memberContributions.length})</span>
             <span>{showContributions ? "Hide" : "Show"}</span>
@@ -183,10 +271,20 @@ export function ChallengeCard({
               {challenge.memberContributions.map((mc) => (
                 <li
                   key={mc.memberId}
-                  className="flex justify-between text-sm text-slate-600"
+                  className="flex justify-between gap-2 text-sm text-ink-muted"
                 >
-                  <span>{mc.displayName}</span>
-                  <span>{mc.amount.toLocaleString()}</span>
+                  <span className="min-w-0">
+                    <span className="text-ink">{mc.displayName}</span>
+                    {mc.adventurerTitle && (
+                      <>
+                        {" "}
+                        <span className={rarityTextClass(mc.adventurerRarity)}>
+                          the {mc.adventurerTitle}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <span className="shrink-0">{mc.amount.toLocaleString()}</span>
                 </li>
               ))}
             </ul>

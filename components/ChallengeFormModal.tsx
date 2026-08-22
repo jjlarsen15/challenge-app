@@ -61,7 +61,7 @@ function ChallengeFormFields({
       });
       onClose();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Failed to save challenge");
+      setFormError(err instanceof Error ? err.message : "Failed to save quest");
     } finally {
       setSaving(false);
     }
@@ -71,7 +71,7 @@ function ChallengeFormFields({
     <form onSubmit={handleSubmit} className="mt-4 space-y-3">
       <label className="block">
         <span className="mb-1 block text-sm font-medium text-slate-700">
-          Challenge name
+          Quest name
         </span>
         <input
           type="text"
@@ -84,14 +84,14 @@ function ChallengeFormFields({
       </label>
 
       <label className="block">
-        <span className="mb-1 block text-sm font-medium text-slate-700">Location</span>
+        <span className="mb-1 block text-sm font-medium text-slate-700">Stage</span>
         <select
           value={categoryId}
           onChange={(event) => setCategoryId(event.target.value)}
           className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-base outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-200"
           required
         >
-          {categories.length === 0 && <option value="">No locations yet</option>}
+          {categories.length === 0 && <option value="">No stages yet</option>}
           {categories.map((cat) => (
             <option key={cat.id} value={cat.id}>
               {cat.name}
@@ -144,7 +144,7 @@ function ChallengeFormFields({
           {saving
             ? "Saving..."
             : mode === "add"
-              ? "Add Challenge"
+              ? "Add Quest"
               : "Save Changes"}
         </button>
       </div>
@@ -186,12 +186,12 @@ export function ChallengeFormModal({
         onClick={(event) => event.stopPropagation()}
       >
         <h2 className="text-xl font-bold text-slate-900">
-          {mode === "add" ? "Add Challenge" : "Edit Challenge"}
+          {mode === "add" ? "Add Quest" : "Edit Quest"}
         </h2>
         <p className="mt-1 text-sm text-slate-500">
           {mode === "add"
-            ? "Create a numeric goal challenge for a location."
-            : "Update the challenge details."}
+            ? "Create a numeric goal quest for a stage."
+            : "Update the quest details."}
         </p>
 
         <ChallengeFormFields
