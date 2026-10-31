@@ -1,75 +1,55 @@
-import type { DbRoom, RoomTimer, TimerStatus } from "./types";
+import { cn as mergeClasses, type ClassValue } from "cn";
 
-const ROOM_CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
-export function generateRoomCode(): string {
-  let code = "";
-  for (let i = 0; i < 6; i++) {
-    code += ROOM_CODE_CHARS[Math.floor(Math.random() * ROOM_CODE_CHARS.length)];
-  }
-  return code;
+export function cn(...inputs: ClassValue[]) {
+  return mergeClasses(...inputs);
 }
 
-export function formatPercent(progress: number, goal: number): number {
-  if (goal <= 0) return 0;
-  return Math.min(100, Math.round((progress / goal) * 100));
+export function formatRelativeTime(iso: string, now = new Date()): string {
+  const then = new Date(iso).getTime();
+  const diffSeconds = Math.round((then - now.getTime()) / 1000);
+  const abs = Math.abs(diffSeconds);
+  const rtf = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
+
+  if (abs < 60) return rtf.format(Math.round(diffSeconds), "second");
+  if (abs < 3600) return rtf.format(Math.round(diffSeconds / 60), "minute");
+  if (abs < 86400) return rtf.format(Math.round(diffSeconds / 3600), "hour");
+  if (abs < 86400 * 30) return rtf.format(Math.round(diffSeconds / 86400), "day");
+  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric" }).format(
+    new Date(iso),
+  );
 }
 
-export function formatCountdown(totalSeconds: number): string {
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  return [hours, minutes, seconds]
-    .map((value) => String(value).padStart(2, "0"))
-    .join(":");
+export function formatDateTime(iso: string): string {
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(iso));
 }
 
-export function durationToSeconds(hours: number, minutes: number): number {
-  return hours * 3600 + minutes * 60;
+export function initials(name: string): string {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
-export function deriveTimerState(room: DbRoom): RoomTimer | null {
-  const { timer_duration_seconds, timer_started_at, timer_paused_remaining_seconds } = room;
+export function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48);
+}
 
-  if (!timer_duration_seconds) return null;
+export function unique<T>(items: T[]): T[] {
+  return [...new Set(items)];
+}
 
-  if (timer_paused_remaining_seconds !== null) {
-    const status: TimerStatus = timer_paused_remaining_seconds <= 0 ? "finished" : "paused";
-    return {
-      durationSeconds: timer_duration_seconds,
-      secondsRemaining: Math.max(0, timer_paused_remaining_seconds),
-      status,
-      startedAt: null,
-    };
-  }
-
-  if (timer_started_at) {
-    const startMs = new Date(timer_started_at).getTime();
-    const elapsed = Math.floor((Date.now() - startMs) / 1000);
-    const remaining = timer_duration_seconds - elapsed;
-
-    if (remaining <= 0) {
-      return {
-        durationSeconds: timer_duration_seconds,
-        secondsRemaining: 0,
-        status: "finished",
-        startedAt: timer_started_at,
-      };
-    }
-
-    return {
-      durationSeconds: timer_duration_seconds,
-      secondsRemaining: remaining,
-      status: "running",
-      startedAt: timer_started_at,
-    };
-  }
-
-  return {
-    durationSeconds: timer_duration_seconds,
-    secondsRemaining: timer_duration_seconds,
-    status: "ready",
-    startedAt: null,
-  };
+export function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
 }

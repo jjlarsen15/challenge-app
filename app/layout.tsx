@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Providers } from "@/components/providers";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,18 +14,27 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Challenge",
-  description: "Track group challenges together",
+  title: {
+    default: "OwnerOS",
+    template: "%s · OwnerOS",
+  },
+  description:
+    "The AI business memory for small service companies. Capture knowledge from the field, approve it, and answer from trusted company guidance.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html
       lang="en"
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-white font-sans text-slate-900">
-        {children}
+      <body className="min-h-full bg-background font-sans text-foreground">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
